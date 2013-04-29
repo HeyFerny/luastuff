@@ -4,18 +4,17 @@ cvars.AddChangeCallback("_FAdmin_immunity", function(Cvar, Previous, New)
 	FAdmin.SaveSetting("_FAdmin_immunity", tonumber(New))
 end)
 
-hook.Add("InitPostEntity", "InitializeFAdminGroups", function()
-	timer.Simple(2, function()
-		DB.Query("CREATE TABLE IF NOT EXISTS FADMIN_GROUPS(NAME VARCHAR(40) NOT NULL PRIMARY KEY, ADMIN_ACCESS INTEGER NOT NULL);")
-		DB.Query("CREATE TABLE IF NOT EXISTS FAdmin_PlayerGroup(steamid VARCHAR(40) NOT NULL, groupname VARCHAR(40) NOT NULL, PRIMARY KEY(steamid));")
-		DB.Query([[CREATE TABLE IF NOT EXISTS FADMIN_PRIVILEGES(
-			NAME VARCHAR(40),
-			PRIVILEGE VARCHAR(100),
-			PRIMARY KEY(NAME, PRIVILEGE),
-			FOREIGN KEY(NAME) REFERENCES FADMIN_GROUPS(NAME)
-				ON UPDATE CASCADE
-				ON DELETE CASCADE
-		);]])
+hook.Add("DatabaseInitialized", "InitializeFAdminGroups", function()
+	DB.Query("CREATE TABLE IF NOT EXISTS FADMIN_GROUPS(NAME VARCHAR(40) NOT NULL PRIMARY KEY, ADMIN_ACCESS INTEGER NOT NULL);")
+	DB.Query("CREATE TABLE IF NOT EXISTS FAdmin_PlayerGroup(steamid VARCHAR(40) NOT NULL, groupname VARCHAR(40) NOT NULL, PRIMARY KEY(steamid));")
+	DB.Query([[CREATE TABLE IF NOT EXISTS FADMIN_PRIVILEGES(
+		NAME VARCHAR(40),
+		PRIVILEGE VARCHAR(100),
+		PRIMARY KEY(NAME, PRIVILEGE),
+		FOREIGN KEY(NAME) REFERENCES FADMIN_GROUPS(NAME)
+			ON UPDATE CASCADE
+			ON DELETE CASCADE
+	);]], function()
 
 		DB.Query("SELECT g.NAME, g.ADMIN_ACCESS, p.PRIVILEGE FROM FADMIN_GROUPS g LEFT OUTER JOIN FADMIN_PRIVILEGES p ON g.NAME = p.NAME;", function(data)
 			if not data then return end
@@ -39,21 +38,22 @@ hook.Add("InitPostEntity", "InitializeFAdminGroups", function()
 		FAdmin.Access.AddGroup("admin", 1)
 		FAdmin.Access.AddGroup("user", 0)
 		FAdmin.Access.AddGroup("noaccess", 0)
+	end)
+end)
 
-		DB.QueryValue("SELECT COUNT(*) FROM FADMIN_PRIVILEGES;", function(val)
-			if val ~= "0" then return end
+-- Check if the privileges are loaded when we're sure they're all added
+timer.Simple(3, function()
+	DB.QueryValue("SELECT COUNT(*) FROM FADMIN_PRIVILEGES;", function(val)
+		if val ~= "0" then return end
 
-			local hasPrivs = {"noaccess", "user", "admin", "superadmin"}
+		local hasPrivs = {"noaccess", "user", "admin", "superadmin"}
 
-			DB.Begin()
-			for priv, access in pairs(FAdmin.Access.Privileges) do
-				for i = access + 1, #hasPrivs, 1 do
-					FAdmin.Access.Groups[hasPrivs[i]].PRIVS[priv] = true
-					DB.Query("INSERT INTO FADMIN_PRIVILEGES VALUES(".. sql.SQLStr(hasPrivs[i]) .. ", " .. sql.SQLStr(priv) .. ");")
-				end
+		for priv, access in pairs(FAdmin.Access.Privileges) do
+			for i = access + 1, #hasPrivs, 1 do
+				FAdmin.Access.Groups[hasPrivs[i]].PRIVS[priv] = true
+				DB.Query("INSERT INTO FADMIN_PRIVILEGES VALUES(".. sql.SQLStr(hasPrivs[i]) .. ", " .. sql.SQLStr(priv) .. ");")
 			end
-			DB.Commit()
-		end)
+		end
 	end)
 end)
 
